@@ -11,8 +11,16 @@ from rich.console import Console
 from ideas_generator import db as dbm
 from ideas_generator.cluster import rebuild_clusters
 from ideas_generator.config import discover_dotenv_paths, get_settings, parse_bare_api_keys_from_dotenv_files
+from ideas_generator.connectors.devto import fetch_devto_articles
+from ideas_generator.connectors.discourse import fetch_discourse_latest
+from ideas_generator.connectors.github_issues import fetch_github_issues
+from ideas_generator.connectors.gitlab_issues import fetch_gitlab_issues
 from ideas_generator.connectors.hn import fetch_hn_items
+from ideas_generator.connectors.lemmy import fetch_lemmy_posts
+from ideas_generator.connectors.mastodon import fetch_mastodon_tag_timelines
+from ideas_generator.connectors.product_hunt import fetch_product_hunt_items
 from ideas_generator.connectors.reddit import fetch_reddit_items
+from ideas_generator.connectors.rss_feeds import fetch_rss_feeds
 from ideas_generator.connectors.stackexchange import fetch_stackexchange_items
 from ideas_generator.embed import run_embed
 from ideas_generator.llm_screen import run_llm_screen
@@ -32,7 +40,15 @@ def _connect():
     return conn, s
 
 
+def _normalize_ingest_source(source: str) -> str:
+    s = source.strip().lower().replace("_", "-")
+    if s == "producthunt":
+        return "product-hunt"
+    return s
+
+
 def _ingest_impl(source: str) -> tuple[int, int]:
+    source = _normalize_ingest_source(source)
     conn, settings = _connect()
     dbm.init_db(conn)
     raw: list[RawItem] = []
@@ -40,6 +56,14 @@ def _ingest_impl(source: str) -> tuple[int, int]:
     fetch_hn = source in ("hn", "hn-stackexchange", "all")
     fetch_se = source in ("stackexchange", "hn-stackexchange", "all")
     fetch_reddit = source in ("reddit", "all")
+    fetch_ph = source in ("product-hunt", "all")
+    fetch_gh = source in ("github", "all")
+    fetch_devto = source in ("devto", "all", "hn-stackexchange")
+    fetch_rss = source in ("rss", "all")
+    fetch_gitlab = source in ("gitlab", "all")
+    fetch_discourse = source in ("discourse", "all")
+    fetch_mastodon = source in ("mastodon", "all")
+    fetch_lemmy = source in ("lemmy", "all")
 
     if fetch_hn:
         console.print("Fetching Hacker News…")
@@ -69,6 +93,142 @@ def _ingest_impl(source: str) -> tuple[int, int]:
             raise typer.Exit(code=1)
         else:
             console.print("[dim]Skipping Reddit (add credentials later; use --source all to include when ready).[/dim]")
+
+    if fetch_ph:
+        tok = (settings.product_hunt_token or "").strip()
+        if tok:
+            console.print("Fetching Product Hunt…")
+            raw.extend(
+                fetch_product_hunt_items(tok, limit=settings.product_hunt_posts_limit)
+            )
+        elif source == "product-hunt":
+            console.print(
+                "[red]Product Hunt requires IDEAS_PRODUCT_HUNT_TOKEN (or PRODUCT_HUNT_TOKEN) in .env[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping Product Hunt (set IDEAS_PRODUCT_HUNT_TOKEN).[/dim]")
+
+    if fetch_gh:
+        gh_repos = [x.strip() for x in settings.github_repos.split(",") if x.strip()]
+        if gh_repos:
+            console.print(f"Fetching GitHub issues ({len(gh_repos)} repos)…")
+            raw.extend(
+                fetch_github_issues(
+                    settings.github_token,
+                    gh_repos,
+                    per_repo=settings.github_issues_per_repo,
+                )
+            )
+        elif source == "github":
+            console.print(
+                "[red]GitHub requires IDEAS_GITHUB_REPOS (comma-separated owner/repo pairs)[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping GitHub (set IDEAS_GITHUB_REPOS).[/dim]")
+
+    if fetch_devto:
+        console.print("Fetching dev.to…")
+        raw.extend(
+            fetch_devto_articles(
+                settings.devto_token,
+                limit=settings.devto_articles_limit,
+            )
+        )
+
+    if fetch_rss:
+        rss_urls = [x.strip() for x in settings.rss_feed_urls.split(",") if x.strip()]
+        if rss_urls:
+            console.print(f"Fetching RSS feeds ({len(rss_urls)})…")
+            raw.extend(
+                fetch_rss_feeds(
+                    rss_urls,
+                    max_per_feed=settings.rss_max_entries_per_feed,
+                )
+            )
+        elif source == "rss":
+            console.print(
+                "[red]RSS requires IDEAS_RSS_FEED_URLS (comma-separated feed URLs)[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping RSS (set IDEAS_RSS_FEED_URLS to add feeds).[/dim]")
+
+    if fetch_gitlab:
+        gl_projects = [x.strip() for x in settings.gitlab_projects.split(",") if x.strip()]
+        if gl_projects:
+            console.print(f"Fetching GitLab issues ({len(gl_projects)} projects)…")
+            raw.extend(
+                fetch_gitlab_issues(
+                    settings.gitlab_token,
+                    gl_projects,
+                    host=settings.gitlab_host,
+                    per_project=settings.gitlab_issues_per_project,
+                )
+            )
+        elif source == "gitlab":
+            console.print(
+                "[red]GitLab requires IDEAS_GITLAB_PROJECTS (namespace/project, comma-separated)[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping GitLab (set IDEAS_GITLAB_PROJECTS).[/dim]")
+
+    if fetch_discourse:
+        d_urls = [x.strip() for x in settings.discourse_base_urls.split(",") if x.strip()]
+        if d_urls:
+            console.print(f"Fetching Discourse ({len(d_urls)} sites)…")
+            raw.extend(
+                fetch_discourse_latest(
+                    d_urls,
+                    topics_per_site=settings.discourse_topics_per_site,
+                )
+            )
+        elif source == "discourse":
+            console.print(
+                "[red]Discourse requires IDEAS_DISCOURSE_BASE_URLS (comma-separated forum URLs)[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping Discourse (set IDEAS_DISCOURSE_BASE_URLS).[/dim]")
+
+    if fetch_mastodon:
+        m_host = (settings.mastodon_host or "").strip()
+        m_tags = [x.strip().lstrip("#") for x in settings.mastodon_hashtags.split(",") if x.strip()]
+        if m_host and m_tags:
+            console.print(f"Fetching Mastodon ({m_host}, {len(m_tags)} tags)…")
+            raw.extend(
+                fetch_mastodon_tag_timelines(
+                    m_host,
+                    m_tags,
+                    limit=settings.mastodon_limit,
+                )
+            )
+        elif source == "mastodon":
+            console.print(
+                "[red]Mastodon requires IDEAS_MASTODON_HOST and IDEAS_MASTODON_HASHTAGS[/red]"
+            )
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping Mastodon (set IDEAS_MASTODON_HOST and IDEAS_MASTODON_HASHTAGS).[/dim]")
+
+    if fetch_lemmy:
+        l_host = (settings.lemmy_host or "").strip()
+        if l_host:
+            console.print(f"Fetching Lemmy ({l_host})…")
+            raw.extend(
+                fetch_lemmy_posts(
+                    l_host,
+                    community_name=settings.lemmy_community,
+                    limit=settings.lemmy_limit,
+                )
+            )
+        elif source == "lemmy":
+            console.print("[red]Lemmy requires IDEAS_LEMMY_HOST[/red]")
+            raise typer.Exit(code=1)
+        elif source == "all":
+            console.print("[dim]Skipping Lemmy (set IDEAS_LEMMY_HOST).[/dim]")
 
     n = 0
     nh = 0
@@ -100,7 +260,10 @@ def ingest(
         "hn-stackexchange",
         "--source",
         "-s",
-        help="hn-stackexchange (default) | hn | stackexchange | reddit | all",
+        help=(
+            "hn-stackexchange (default: HN+SE+dev.to) | hn | stackexchange | reddit | product-hunt | "
+            "github | gitlab | discourse | mastodon | lemmy | devto | rss | all"
+        ),
     ),
 ) -> None:
     """Fetch from configured APIs and upsert into SQLite."""
@@ -218,9 +381,15 @@ def report_cmd(
 @app.command()
 def run(
     top: int = typer.Option(25, "--top", "-n"),
+    source: str = typer.Option(
+        "all",
+        "--source",
+        "-s",
+        help="Ingest source (same as ideas ingest); all = HN+SE+dev.to+optional APIs (RSS/GitLab/…)",
+    ),
 ) -> None:
     """ingest → embed → cluster → score → report"""
-    n, nh = _ingest_impl("hn-stackexchange")
+    n, nh = _ingest_impl(source)
     console.print(f"[green]Upserted {n} items[/green] ({nh} flagged healthcare).")
 
     conn, settings = _connect()

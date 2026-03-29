@@ -37,6 +37,60 @@ class Settings(BaseSettings):
 
     hn_lookback_seconds: int = Field(default=86400 * 7, description="How far back to search HN stories")
 
+    product_hunt_token: str | None = None
+    product_hunt_posts_limit: int = Field(default=50, ge=1, le=100)
+
+    github_token: str | None = None
+    github_repos: str = Field(
+        default="",
+        description="Comma-separated owner/repo pairs for recent open issues (e.g. vercel/next.js)",
+    )
+    github_issues_per_repo: int = Field(default=25, ge=1, le=100)
+
+    devto_token: str | None = Field(
+        default=None,
+        description="Optional dev.to API key (higher rate limits); https://dev.to/settings/extensions",
+    )
+    devto_articles_limit: int = Field(
+        default=30,
+        ge=1,
+        le=1000,
+        description="Recent articles from dev.to API (public; optional IDEAS_DEVTO_TOKEN)",
+    )
+    rss_feed_urls: str = Field(
+        default="https://lobste.rs/h.rss",
+        description="Comma-separated RSS/Atom URLs (no key); default Lobsters homepage",
+    )
+    rss_max_entries_per_feed: int = Field(default=25, ge=1, le=200)
+
+    gitlab_token: str | None = Field(default=None, description="Optional GitLab token (rate limits / private)")
+    gitlab_host: str = Field(default="https://gitlab.com", description="GitLab API base URL")
+    gitlab_projects: str = Field(
+        default="",
+        description="Comma-separated namespace/project paths on gitlab_host (public API, no token required)",
+    )
+    gitlab_issues_per_project: int = Field(default=20, ge=1, le=100)
+
+    discourse_base_urls: str = Field(
+        default="",
+        description="Comma-separated Discourse forum origins, e.g. https://meta.discourse.org",
+    )
+    discourse_topics_per_site: int = Field(default=25, ge=1, le=100)
+
+    mastodon_host: str = Field(default="", description="Instance host without scheme, e.g. mastodon.social")
+    mastodon_hashtags: str = Field(
+        default="",
+        description="Comma-separated hashtags (no #) for public tag timelines",
+    )
+    mastodon_limit: int = Field(default=40, ge=1, le=80)
+
+    lemmy_host: str = Field(default="", description="Lemmy instance host, e.g. lemmy.ml")
+    lemmy_community: str = Field(
+        default="",
+        description="Optional community name on that instance (e.g. asklemmy)",
+    )
+    lemmy_limit: int = Field(default=25, ge=1, le=50)
+
     weight_recurrence: float = 1.0
     weight_recency: float = 0.5
     weight_engagement: float = 0.3
@@ -104,6 +158,26 @@ class Settings(BaseSettings):
             v = os.environ.get("GEMINI_API_KEY") or os.environ.get("IDEAS_GEMINI_API_KEY")
             if v and str(v).strip():
                 data["gemini_api_key"] = str(v).strip()
+        gh = data.get("github_token")
+        if gh is None or (isinstance(gh, str) and not gh.strip()):
+            v = os.environ.get("GITHUB_TOKEN") or os.environ.get("IDEAS_GITHUB_TOKEN")
+            if v and str(v).strip():
+                data["github_token"] = str(v).strip()
+        ph = data.get("product_hunt_token")
+        if ph is None or (isinstance(ph, str) and not ph.strip()):
+            v = os.environ.get("PRODUCT_HUNT_TOKEN") or os.environ.get("IDEAS_PRODUCT_HUNT_TOKEN")
+            if v and str(v).strip():
+                data["product_hunt_token"] = str(v).strip()
+        dt = data.get("devto_token")
+        if dt is None or (isinstance(dt, str) and not dt.strip()):
+            v = os.environ.get("DEVTO_API_KEY") or os.environ.get("IDEAS_DEVTO_TOKEN")
+            if v and str(v).strip():
+                data["devto_token"] = str(v).strip()
+        gl = data.get("gitlab_token")
+        if gl is None or (isinstance(gl, str) and not gl.strip()):
+            v = os.environ.get("GITLAB_TOKEN") or os.environ.get("IDEAS_GITLAB_TOKEN")
+            if v and str(v).strip():
+                data["gitlab_token"] = str(v).strip()
         return data
 
 
