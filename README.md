@@ -69,6 +69,15 @@ Generic idea lists come from **broad** inputs. For problems that feel more **spe
 
 Front-page **Hacker News** alone skews newsy; combining it with **Discourse**, **targeted Stack Exchange sites**, and **RSS** surfaces more recurring operational pain.
 
+### Founder validation workflow
+
+Retrieval and clustering beat a one-shot chat answer because outputs are **grounded in real posts**. To decide what to build:
+
+1. **Shortlist** a few high-**composite** clusters (and check **recurrence** columns for repeated pain in the window).
+2. **Read originals** — open **10–20 source URLs** from those clusters; use the report’s **verbatim** lines as quotes, not paraphrases.
+3. **Triangulate** — skim **job ads** or review sites (e.g. G2/Capterra themes) for the same category; alignment strengthens the signal.
+4. **Interview** — run **5–10** short calls with people in that role before committing engineering time.
+
 After upgrading, run **`ideas embed`** once so **`business_tool_fit`** is backfilled for rows that already have embeddings.
 
 ### LLM screen (optional, recommended for precision)
