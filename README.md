@@ -53,9 +53,9 @@ ideas run -s hn-stackexchange   # HN + SE only
 
 Data lives in `./data/ideas.sqlite3` by default (gitignored).
 
-- **`IDEAS_MIN_BUSINESS_TOOL_FIT`** (default ~`0.43`): cosine vs anchor; **lower** lets more through (including newsy HN), **higher** keeps only stronger “build a tool for businesses” matches. Set to **`0`** to disable this gate (legacy behavior).
+- **`IDEAS_MIN_BUSINESS_TOOL_FIT`** (default ~`0.48`): cosine vs anchor; **lower** lets more through (including newsy HN), **higher** keeps only stronger “niche B2B / operational tool” matches. Set to **`0`** to disable this gate (legacy behavior).
 - **`IDEAS_BUSINESS_TOOL_ANCHOR`**: optional env override for the anchor paragraph (otherwise uses the built-in default in `config.py`).
-- Lower **`IDEAS_CLUSTER_SIMILARITY_THRESHOLD`** (e.g. `0.72`) to merge more posts into fewer, broader themes; raise it for stricter grouping.
+- Lower **`IDEAS_CLUSTER_SIMILARITY_THRESHOLD`** (e.g. `0.72`) to merge more posts into fewer, broader themes; raise it (default ~`0.80`) for stricter, smaller clusters.
 - Adjust **`IDEAS_HN_LOOKBACK_SECONDS`** to control how far back HN pulls stories (default: 7 days).
 
 After upgrading, run **`ideas embed`** once so **`business_tool_fit`** is backfilled for rows that already have embeddings.
@@ -74,7 +74,7 @@ Use **`pip install -e .`** so the package path stays inside your repo; a plain *
 
 - **`ideas llm-screen`** — classifies each embedded post as **business tool opportunity** vs **news / markets / consumer / other**; stores `tool_opportunity_score` (0–1).
 - **`ideas run`** runs **`llm-screen` automatically** after **`embed`** when the chosen provider’s key is set.
-- Clustering and reports only keep items with **`llm_tool_score >= IDEAS_LLM_MIN_TOOL_SCORE`** (default `0.55`) when LLM screening is enabled.
+- Clustering and reports only keep items with **`llm_tool_score >= IDEAS_LLM_MIN_TOOL_SCORE`** (default `0.60`) when LLM screening is enabled.
 
 **Gemini:** set **`IDEAS_LLM_PROVIDER=gemini`**, **`GEMINI_API_KEY`**, and optionally **`IDEAS_GEMINI_MODEL`** (default `gemini-2.0-flash`).
 

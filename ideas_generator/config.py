@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     database_path: Path = Field(default=Path("data/ideas.sqlite3"))
     embedding_model: str = Field(default="BAAI/bge-small-en-v1.5")
-    cluster_similarity_threshold: float = Field(default=0.78, ge=0.0, le=1.0)
+    cluster_similarity_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
 
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None
@@ -101,19 +101,21 @@ class Settings(BaseSettings):
     recency_half_life_days: float = 3.0
 
     min_business_tool_fit: float = Field(
-        default=0.43,
+        default=0.48,
         ge=0.0,
         le=1.0,
         description="Cosine vs anchor; below = excluded from clustering/report",
     )
     business_tool_anchor: str = Field(
         default=(
-            "A concrete problem faced by people working in businesses, startups, or organizations: "
-            "operations, internal workflows, revenue, sales, finance, hiring, compliance, IT, "
-            "security in a company context, customer support at scale, data and integrations, "
-            "or building and buying B2B software and SaaS tools. Something a development team "
-            "could address by building a product, integration, automation, or platform for companies. "
-            "Not general world news, consumer gadget hobbies, games, or politics without a business angle."
+            "A concrete, preferably specific operational or commercial pain in a business context: "
+            "named workflows, integrations between systems, revenue ops, finance close, procurement, "
+            "IT and security for organizations, compliance and audit, support and customer success at scale, "
+            "data pipelines, or buying and renewing B2B / SaaS tools. Prefer niche or vertical angles—"
+            "a particular role, stack, or regulation—over generic 'startups should…' advice. "
+            "Something a small product team could plausibly own as software, automation, or a narrow platform. "
+            "Not: general news, crypto/speculation, pure hiring chatter, games, consumer hobbies, or politics "
+            "without a clear business process or buyer pain."
         ),
         description="Embedded once per run; tune to sharpen 'tool for businesses' relevance",
     )
@@ -125,7 +127,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.0-flash"
     llm_min_tool_score: float = Field(
-        default=0.55,
+        default=0.60,
         ge=0.0,
         le=1.0,
         description="Include in clusters only if model score >= this (when API key set)",
