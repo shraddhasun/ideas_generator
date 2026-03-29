@@ -58,6 +58,17 @@ Data lives in `./data/ideas.sqlite3` by default (gitignored).
 - Lower **`IDEAS_CLUSTER_SIMILARITY_THRESHOLD`** (e.g. `0.72`) to merge more posts into fewer, broader themes; raise it (default ~`0.80`) for stricter, smaller clusters.
 - Adjust **`IDEAS_HN_LOOKBACK_SECONDS`** to control how far back HN pulls stories (default: 7 days).
 
+### Niche B2B discovery (sources)
+
+Generic idea lists come from **broad** inputs. For problems that feel more **specific than ChatGPT**, bias ingestion toward **communities where buyers and operators post**:
+
+- **Stack Exchange** — Set **`IDEAS_STACKEXCHANGE_SITES`** to vertical or ops sites (for example `workplace`, `serverfault`, `dba`, `salesforce`, `sharepoint`, `webmasters`) instead of only general programming Q&A.
+- **Reddit** — Expand **`IDEAS_REDDIT_SUBREDDITS`** with the industries you care about (for example `msp`, `sysadmin`, `accounting`, `ecommerce`, `smallbusiness`); requires Reddit API credentials.
+- **Discourse** — Point **`IDEAS_DISCOURSE_BASE_URLS`** at vendor or professional forums that expose public **`/latest.json`** (product communities, open-core tools, trade associations).
+- **RSS** — Add **`IDEAS_RSS_FEED_URLS`** entries for **industry newsletters**, **niche blogs**, and **association** feeds—not only large tech aggregators.
+
+Front-page **Hacker News** alone skews newsy; combining it with **Discourse**, **targeted Stack Exchange sites**, and **RSS** surfaces more recurring operational pain.
+
 After upgrading, run **`ideas embed`** once so **`business_tool_fit`** is backfilled for rows that already have embeddings.
 
 ### LLM screen (optional, recommended for precision)
