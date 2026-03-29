@@ -1,0 +1,28 @@
+# Optional: run the pipeline on a schedule (e.g. every Monday UTC).
+# Add repository secrets for any API keys you need (OPENAI_API_KEY, Reddit, etc.).
+name: Weekly ideas pipeline
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Run pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: ideas run -s all --top 50 -o report.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ideas-report
+          path: report.md

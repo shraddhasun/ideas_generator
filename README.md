@@ -49,6 +49,7 @@ Or one shot:
 ```bash
 ideas run --top 25              # default ingest: all (HN+SE + optional sources)
 ideas run -s hn-stackexchange   # HN + SE only
+ideas run -s all --top 50 -o report.md   # full run, write Markdown to file (good for cron)
 ```
 
 Data lives in `./data/ideas.sqlite3` by default (gitignored).
@@ -56,7 +57,17 @@ Data lives in `./data/ideas.sqlite3` by default (gitignored).
 - **`IDEAS_MIN_BUSINESS_TOOL_FIT`** (default ~`0.48`): cosine vs anchor; **lower** lets more through (including newsy HN), **higher** keeps only stronger “niche B2B / operational tool” matches. Set to **`0`** to disable this gate (legacy behavior).
 - **`IDEAS_BUSINESS_TOOL_ANCHOR`**: optional env override for the anchor paragraph (otherwise uses the built-in default in `config.py`).
 - Lower **`IDEAS_CLUSTER_SIMILARITY_THRESHOLD`** (e.g. `0.72`) to merge more posts into fewer, broader themes; raise it (default ~`0.80`) for stricter, smaller clusters.
-- Adjust **`IDEAS_HN_LOOKBACK_SECONDS`** to control how far back HN pulls stories (default: 7 days).
+- **`IDEAS_INGEST_LOOKBACK_SECONDS`** (default **`604800`** = 7 days): HN Algolia search window and **post-filter for every source**—only items with `created_at` in the last *N* seconds (UTC) are kept. Set to **`0`** to disable this time filter. **`IDEAS_HN_LOOKBACK_SECONDS`** is deprecated but still honored if set (it overrides the ingest value for the whole window).
+
+### Scheduling (weekly)
+
+The defaults match a **once-a-week** job that pulls roughly the **last 7 days** from each configured source.
+
+1. Ensure **`.env`** lists every API you want (`ideas ingest -s all` skips missing keys with a dim message).
+2. Run **`ideas run -s all --top 50 -o report.md`** (or use **`scripts/weekly-run.sh`**, which does the same from the repo root).
+3. **Cron** (example: Mondays 06:00 local time):  
+   `0 6 * * 1 cd /path/to/ideas_generator && ./scripts/weekly-run.sh >> weekly.log 2>&1`
+4. **GitHub Actions** — optional scheduled workflow: **`.github/workflows/weekly-ideas.yml`** (uploads **`report.md`** as an artifact; add repository **secrets** for keys you need).
 
 ### Niche B2B discovery (sources)
 

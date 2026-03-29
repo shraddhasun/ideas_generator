@@ -35,7 +35,15 @@ class Settings(BaseSettings):
 
     stackexchange_sites: str = Field(default="workplace,softwareengineering,serverfault")
 
-    hn_lookback_seconds: int = Field(default=86400 * 7, description="How far back to search HN stories")
+    ingest_lookback_seconds: int = Field(
+        default=86400 * 7,
+        ge=0,
+        description="Ingest only items from roughly the last N seconds (UTC); applied to HN search and all sources after fetch. Use 0 to disable time filtering.",
+    )
+    hn_lookback_seconds: int | None = Field(
+        default=None,
+        description="Deprecated: if set, overrides IDEAS_INGEST_LOOKBACK_SECONDS (same window for HN and post-filter).",
+    )
 
     product_hunt_token: str | None = None
     product_hunt_posts_limit: int = Field(default=50, ge=1, le=100)
@@ -144,6 +152,12 @@ class Settings(BaseSettings):
         description="Cap LLM calls per ideas llm-screen (0 = no cap)",
     )
     llm_sleep_seconds: float = Field(default=0.12, ge=0.0, description="Pause between API calls")
+
+    def effective_ingest_lookback_seconds(self) -> int:
+        """Window for HN Algolia and post-filtering all sources (UTC)."""
+        if self.hn_lookback_seconds is not None:
+            return int(self.hn_lookback_seconds)
+        return int(self.ingest_lookback_seconds)
 
     @model_validator(mode="before")
     @classmethod

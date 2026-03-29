@@ -26,6 +26,7 @@ from ideas_generator.embed import run_embed
 from ideas_generator.llm_screen import run_llm_screen
 from ideas_generator.llm_util import llm_screen_enabled
 from ideas_generator.filters import is_healthcare_related
+from ideas_generator.ingest_window import filter_items_by_lookback
 from ideas_generator.models import RawItem
 from ideas_generator.score import compute_cluster_scores, persist_snapshots
 from ideas_generator.report import report_csv, report_markdown
@@ -65,9 +66,12 @@ def _ingest_impl(source: str) -> tuple[int, int]:
     fetch_mastodon = source in ("mastodon", "all")
     fetch_lemmy = source in ("lemmy", "all")
 
+    lb = settings.effective_ingest_lookback_seconds()
+    # HN Algolia requires a positive created_at_i window; when lookback is 0 (no filter), fetch broadly.
+    hn_fetch_seconds = lb if lb > 0 else 86400 * 365
     if fetch_hn:
         console.print("Fetching Hacker News…")
-        raw.extend(fetch_hn_items(settings.hn_lookback_seconds))
+        raw.extend(fetch_hn_items(hn_fetch_seconds))
 
     if fetch_se:
         sites = [x.strip() for x in settings.stackexchange_sites.split(",") if x.strip()]
@@ -230,6 +234,14 @@ def _ingest_impl(source: str) -> tuple[int, int]:
         elif source == "all":
             console.print("[dim]Skipping Lemmy (set IDEAS_LEMMY_HOST).[/dim]")
 
+    before = len(raw)
+    raw = filter_items_by_lookback(raw, lb)
+    dropped_time = before - len(raw)
+    if dropped_time and lb > 0:
+        console.print(
+            f"[dim]Lookback ({lb}s ≈ {lb // 86400}d): dropped {dropped_time} items older than window.[/dim]"
+        )
+
     n = 0
     nh = 0
     with dbm.transaction(conn):
@@ -387,6 +399,12 @@ def run(
         "-s",
         help="Ingest source (same as ideas ingest); all = HN+SE+dev.to+optional APIs (RSS/GitLab/…)",
     ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write Markdown report to this file instead of printing it on stdout.",
+    ),
 ) -> None:
     """ingest → embed → cluster → score → report"""
     n, nh = _ingest_impl(source)
@@ -422,7 +440,12 @@ def run(
         console.print("[yellow]No clusters to report.[/yellow]")
         return
 
-    sys.stdout.write(report_markdown(scored, top))
+    md = report_markdown(scored, top)
+    if output is not None:
+        output.write_text(md, encoding="utf-8")
+        console.print(f"[green]Wrote report to {output}[/green]")
+    else:
+        sys.stdout.write(md)
 
 
 def main() -> None:
