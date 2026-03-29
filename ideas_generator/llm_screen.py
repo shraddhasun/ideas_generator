@@ -14,18 +14,20 @@ from ideas_generator.llm_util import llm_screen_enabled
 
 _SYSTEM = """You classify posts from Hacker News, forums, and Q&A sites.
 
-Goal: say how strong a **business tool / B2B product opportunity** the content is.
+Goal: say how strong a **niche B2B / operational software opportunity** the content is—whether a **small product team** could plausibly **own** the problem with a tool, integration, or workflow product. Prefer **specific** pain (named workflow, system, role, or vertical) over generic “startups should…” or broad industry commentary.
 
-A HIGH score (0.7–1.0) means: a **concrete operational or commercial pain** that organizations face and that could plausibly be addressed by **building and selling software**—SaaS, internal tools, integrations, automation, compliance/security products, data platforms, support/ops tools—not just reading about a stock or a headline.
+A HIGH score (0.7–1.0) means: **concrete operational or commercial pain** in a business context—integrations, rev/finance ops, IT, security/compliance, support, data pipelines, procurement, or clear buyer frustration with existing tools—and the text gives enough thread that **someone could validate and build** against it.
 
-A LOW score (0.0–0.3) means: **market news**, stock moves, **general interest**, politics/war, consumer gadget chatter, gaming, pure research links, or commentary **without** a clear “someone would pay for a product to fix this” angle.
+A LOW score (0.0–0.3) means: **market or stock news**, fundraising hype without pain, **generic career/startup advice**, crypto/speculation, politics/war, consumer hobbies, gaming, pure research with no business process angle, or **commentary without** a “who would pay for a fix” story.
 
-Middle band: ambiguous or weak product angle.
+Middle band: ambiguous, thin detail, or weak product angle.
 
 **content_angle** (what the reader can *do* with it for product ideation—not the same as category):
-- **problem_opportunity**: The piece **surfaces a problem that needs solving**—recurring pain, workflow gap, need for a tool, buyer friction, or clear demand for a better approach. Use this even when the **format** is news-like (reporting an industry event, case, or story) if that reporting is in service of **explaining or illustrating the problem** (what’s broken, who suffers, what’s missing).
-- **news_or_event**: Mostly **informational**: reports what happened (incident, lawsuit, funding, headline) **without** a usable thread of **ongoing operational pain** or **what buyers/builders should solve next**. Pure “here’s the story” or spectacle, not “here’s the gap to fix.”
-- **mixed**: Real mix of event-reporting and explicit problem/solution framing.
+- **problem_opportunity**: Surfaces **recurring pain**, a workflow gap, buyer friction, or demand for a better tool—even if the **format** is partly news-like—**if** it still explains what is broken, for whom, or what’s missing operationally.
+- **news_or_event**: Mostly **informational**: what happened (funding, lawsuit, headline) **without** a usable line on **ongoing operational pain** or what to build next.
+- **mixed**: Both event-reporting and explicit problem/solution framing.
+
+**one_line**: One short sentence: **who** (role/org type) has the problem and **what** gap or workaround (not generic praise/criticism of a headline). If the post is low-signal for product work, say why briefly.
 
 Respond ONLY with valid JSON matching this shape:
 {"tool_opportunity_score": <number 0.0-1.0>, "category": "<one of: business_problem, market_news, consumer_interest, politics_world, gaming, research_link, opinion_analysis, other>", "content_angle": "<one of: problem_opportunity, news_or_event, mixed>", "one_line": "<short reason>"}
