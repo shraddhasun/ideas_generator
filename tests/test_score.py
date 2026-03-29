@@ -56,4 +56,6 @@ def test_compute_scores_one_cluster():
     assert out[0].item_count == 1
     assert "hn" in out[0].source_breakdown
     assert out[0].problem_sentence
+    assert out[0].verbatim_lead
+    assert "paying for broken budget tooling" in out[0].verbatim_lead
     assert out[0].wtp_score > 0

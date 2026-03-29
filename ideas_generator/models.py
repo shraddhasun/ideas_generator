@@ -34,4 +34,5 @@ class ScoredCluster:
     source_breakdown: str = ""
     llm_one_line: str = ""
     problem_sentence: str = ""  # LLM one_line, or heuristic from lead post
+    verbatim_lead: str = ""  # excerpt from the most recent post (evidence, not paraphrased)
     extra_samples: list[tuple[str, str]] = field(default_factory=list)  # (text, url) up to 2 more

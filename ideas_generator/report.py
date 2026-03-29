@@ -26,7 +26,7 @@ def report_markdown(
     lines: list[str] = [
         "# Problem themes",
         "",
-        "Summary: each row includes the full **problem** sentence (LLM `one_line` when present, otherwise a line from the newest post), plus scores and a **lead** link.",
+        "Summary: each row includes the **problem** line (LLM `one_line` when present, otherwise a line from the newest post), scores, a **lead** link, and in **Cluster detail** a **verbatim** excerpt from the newest post as evidence.",
         "",
         "| Rank | Cluster | **Problem** | Posts | 7d | 30d | LLM | Category | Srcs | **Composite** | Lead |",
         "| --- | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- |",
@@ -53,6 +53,9 @@ def report_markdown(
             lines.append("")
             if s.problem_sentence:
                 lines.append(f"> **Problem:** {_md_cell(s.problem_sentence, None)}")
+                lines.append("")
+            if s.verbatim_lead:
+                lines.append(f"> **Verbatim (newest post):** {_md_cell(s.verbatim_lead, None)}")
                 lines.append("")
             lines.append(
                 f"- **Posts:** {s.item_count} · **Recurrence (7d / 30d):** {s.recurrence_7d} / "
@@ -94,6 +97,7 @@ def report_csv(scored: list[ScoredCluster], top: int, out: TextIO) -> None:
             "source_breakdown",
             "llm_one_line",
             "problem_sentence",
+            "verbatim_lead",
             "sample",
             "url",
             "extra_sample_1_text",
@@ -123,6 +127,7 @@ def report_csv(scored: list[ScoredCluster], top: int, out: TextIO) -> None:
                 s.source_breakdown,
                 (s.llm_one_line or "").replace("\n", " ")[:2000],
                 (s.problem_sentence or "").replace("\n", " ")[:2000],
+                (s.verbatim_lead or "").replace("\n", " ")[:2000],
                 s.sample_text.replace("\n", " ")[:500],
                 s.sample_url,
                 ex1[0].replace("\n", " ")[:500],

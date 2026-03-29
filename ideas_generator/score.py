@@ -26,6 +26,11 @@ _SEVERITY = [
     "deadline",
     "can't ship",
     "cant ship",
+    "regulator",
+    "gdpr",
+    "pci",
+    "fine",
+    "penalty",
 ]
 
 _WTP = [
@@ -40,6 +45,18 @@ _WTP = [
     "we use",
     "per seat",
     "invoice",
+    "rfp",
+    "renewal",
+    "renewing",
+    "soc2",
+    "soc 2",
+    "sla",
+    "contract",
+    "procurement",
+    "enterprise",
+    "purchase order",
+    "list price",
+    "quote",
 ]
 
 
@@ -58,6 +75,19 @@ def _keyword_score(text: str, keywords: list[str]) -> float:
     low = text.lower()
     hits = sum(1 for k in keywords if k.lower() in low)
     return min(1.0, hits / 3.0)
+
+
+def _verbatim_lead_excerpt(text: str, max_len: int = 400) -> str:
+    """Short excerpt from the lead post for reports (verbatim evidence)."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    if t.lower().startswith("show hn:"):
+        t = t[len("show hn:") :].strip()
+    one_line = " ".join(t.split())
+    if len(one_line) > max_len:
+        return one_line[: max_len - 1] + "…"
+    return one_line
 
 
 def _fallback_problem_sentence(text: str) -> str:
@@ -172,6 +202,7 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
         problem_sentence = (
             llm_one_line.strip() if llm_one_line else _fallback_problem_sentence(lead_full)
         )
+        verbatim_lead = _verbatim_lead_excerpt(lead_full)
 
         src_counts = Counter(str(row["source"]) for row in items)
         source_breakdown = ", ".join(f"{s} ({c})" for s, c in src_counts.most_common())
@@ -232,11 +263,15 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
                 source_breakdown=source_breakdown,
                 llm_one_line=llm_one_line,
                 problem_sentence=problem_sentence,
+                verbatim_lead=verbatim_lead,
                 extra_samples=extra_samples,
             )
         )
 
-    scored.sort(key=lambda s: s.composite, reverse=True)
+    scored.sort(
+        key=lambda s: (s.composite, s.recurrence_7d, s.recurrence_30d),
+        reverse=True,
+    )
     return scored
 
 
