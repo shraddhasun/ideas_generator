@@ -1,4 +1,10 @@
-from ideas_generator.llm_screen import _sanitize_llm_text, parse_verdict
+import json
+
+from ideas_generator.llm_screen import (
+    _is_producthunt_source,
+    _sanitize_llm_text,
+    parse_verdict,
+)
 
 
 def test_parse_verdict():
@@ -47,3 +53,17 @@ def test_parse_verdict_wtp_omitted():
 def test_sanitize_llm_text_strips_nul_bytes():
     assert _sanitize_llm_text("a\x00b") == "ab"
     assert _sanitize_llm_text("") == ""
+
+
+def test_sanitize_llm_text_strips_lone_surrogates():
+    # Lone surrogates can make JSON request bodies invalid for OpenAI.
+    bad = "a\ud800b"
+    out = _sanitize_llm_text(bad)
+    assert out == "ab"
+    json.dumps({"messages": [{"role": "user", "content": out}]})
+
+
+def test_producthunt_source_detector():
+    assert _is_producthunt_source("producthunt")
+    assert _is_producthunt_source("producthunt:launch")
+    assert not _is_producthunt_source("hn")

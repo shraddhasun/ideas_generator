@@ -88,9 +88,16 @@ def normalize_icp_segment(raw: str | None) -> str:
     return "unclear"
 
 
+def _sanitize_request_str(s: str) -> str:
+    """Make strings safe for JSON request bodies (OpenAI rejects invalid UTF-8 / lone surrogates)."""
+    s = (s or "").replace("\x00", "")
+    # Lone UTF-16 surrogate code units break JSON encoding in some stacks and yield 400 "not valid JSON".
+    return "".join(ch for ch in s if not (0xD800 <= ord(ch) <= 0xDFFF))
+
+
 def _sanitize_llm_text(text: str) -> str:
-    """Strip NULs etc. that can produce invalid requests or odd API errors."""
-    return (text or "").replace("\x00", "")
+    """Strip NULs and characters that break JSON request bodies."""
+    return _sanitize_request_str(text)
 
 
 def _openai_error_message(resp: httpx.Response) -> str:
@@ -167,8 +174,16 @@ def _call_openai(
 
 
 def _user_block(text: str, url: str, source: str, max_chars: int) -> str:
-    body = text if len(text) <= max_chars else text[:max_chars] + "…"
-    return f"Source: {source}\nURL: {url}\n\nText:\n{body}\n"
+    src = _sanitize_request_str(source)
+    u = _sanitize_request_str(url)
+    t = _sanitize_llm_text(text)
+    body = t if len(t) <= max_chars else t[:max_chars] + "…"
+    return f"Source: {src}\nURL: {u}\n\nText:\n{body}\n"
+
+
+def _is_producthunt_source(source: str | None) -> bool:
+    s = (source or "").strip().lower()
+    return s == "producthunt" or s.startswith("producthunt:")
 
 
 def _call_gemini(user_block: str, settings: Settings) -> str:
@@ -265,7 +280,13 @@ def verdict_content_angle(verdict_json: str) -> str:
     return normalize_content_angle(obj.get("content_angle"))
 
 
-def run_llm_screen(conn: sqlite3.Connection, settings: Settings, *, force: bool = False) -> int:
+def run_llm_screen(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    *,
+    force: bool = False,
+    exclude_producthunt: bool = False,
+) -> int:
     if not llm_screen_enabled(settings):
         return 0
 
@@ -284,6 +305,8 @@ def run_llm_screen(conn: sqlite3.Connection, settings: Settings, *, force: bool 
     done = 0
     skipped = 0
     for row in track(pending, description="LLM screen"):
+        if exclude_producthunt and _is_producthunt_source(str(row["source"])):
+            continue
         try:
             score, cat, verdict_json = classify_one(
                 str(row["text"]),
