@@ -9,6 +9,7 @@ from typing import Any
 
 from ideas_generator import db as dbm
 from ideas_generator.config import Settings
+from ideas_generator.llm_screen import normalize_icp_segment
 from ideas_generator.llm_util import llm_screen_enabled
 from ideas_generator.models import ScoredCluster
 
@@ -77,6 +78,59 @@ def _keyword_score(text: str, keywords: list[str]) -> float:
     return min(1.0, hits / 3.0)
 
 
+def _format_engagement_human(eng: dict[str, Any]) -> str:
+    """Readable points/comments (and Stack Exchange answer_count) for reports."""
+    if not eng:
+        return "no engagement data"
+    parts: list[str] = []
+    pts = eng.get("points")
+    if pts is None and "score" in eng:
+        pts = eng.get("score")
+    if pts is not None:
+        parts.append(f"{int(pts)} pts")
+    com = eng.get("comments")
+    if com is None:
+        com = eng.get("num_comments")
+    if com is not None:
+        parts.append(f"{int(com)} comments")
+    ac = eng.get("answer_count")
+    if ac is not None:
+        parts.append(f"{int(ac)} answers")
+    return " · ".join(parts) if parts else "no engagement data"
+
+
+def _top_engagement_posts(
+    items: list[sqlite3.Row], *, limit: int = 3
+) -> list[tuple[str, str, str, str]]:
+    """(source, url, metrics, snippet) for highest-engagement distinct URLs."""
+    ranked: list[tuple[float, sqlite3.Row]] = []
+    for row in items:
+        try:
+            eng = json.loads(row["engagement_json"] or "{}")
+        except json.JSONDecodeError:
+            eng = {}
+        ranked.append((_engagement_value(eng), row))
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    seen: set[str] = set()
+    out: list[tuple[str, str, str, str]] = []
+    for _ev, row in ranked:
+        u = row["url"] or ""
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        try:
+            eng = json.loads(row["engagement_json"] or "{}")
+        except json.JSONDecodeError:
+            eng = {}
+        metrics = _format_engagement_human(eng)
+        tx = row["text"] or ""
+        snip = (tx[:140] + "…") if len(tx) > 140 else tx
+        out.append((str(row["source"]), u, metrics, snip))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _verbatim_lead_excerpt(text: str, max_len: int = 400) -> str:
     """Short excerpt from the lead post for reports (verbatim evidence)."""
     t = (text or "").strip()
@@ -106,7 +160,16 @@ def _fallback_problem_sentence(text: str) -> str:
     return line
 
 
-def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list[ScoredCluster]:
+def compute_cluster_scores(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    *,
+    sort_primary: str = "composite",
+) -> list[ScoredCluster]:
+    primary = (sort_primary or "composite").strip().lower()
+    if primary not in ("composite", "engagement", "recurrence"):
+        primary = "composite"
+
     now = time.time()
     t7 = now - 86400 * 7
     t30 = now - 86400 * 30
@@ -149,10 +212,15 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
         best_text = ""
         lead_full = ""
         best_ts = 0.0
+        lead_row: sqlite3.Row | None = None
         rows_with_eng: list[tuple[sqlite3.Row, float]] = []
         llm_scores: list[float] = []
         cat_counter: Counter[str] = Counter()
+        icp_counter: Counter[str] = Counter()
         llm_one_line = ""
+        llm_wtp_vals: list[float] = []
+        best_wtp_for_rationale = -1.0
+        llm_wtp_rationale_best = ""
 
         for row in items:
             ts = float(row["created_at"])
@@ -176,11 +244,27 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
             lc = row["llm_category"]
             if lc and str(lc).strip():
                 cat_counter[str(lc).strip()] += 1
+            vj = row["llm_verdict_json"]
+            if vj:
+                try:
+                    vo = json.loads(vj)
+                    icp_counter[normalize_icp_segment(vo.get("icp_segment"))] += 1
+                    wv = vo.get("willingness_to_pay_score")
+                    if wv is not None:
+                        wf = max(0.0, min(1.0, float(wv)))
+                        llm_wtp_vals.append(wf)
+                        if wf > best_wtp_for_rationale:
+                            best_wtp_for_rationale = wf
+                            r = str(vo.get("wtp_rationale") or "").strip()
+                            llm_wtp_rationale_best = r[:200] if r else ""
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
             if ts >= best_ts:
                 best_ts = ts
                 best_url = row["url"] or ""
                 lead_full = t
                 best_text = (t[:400] + "…") if len(t) > 400 else t
+                lead_row = row
 
         best_llm_row: sqlite3.Row | None = None
         best_llm_sc = -1.0
@@ -211,6 +295,17 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
         if llm_scores:
             llm_score_avg = sum(llm_scores) / len(llm_scores)
         llm_category_mode = cat_counter.most_common(1)[0][0] if cat_counter else None
+        llm_icp_mode = icp_counter.most_common(1)[0][0] if icp_counter else None
+
+        engagement_lead_metrics = ""
+        if lead_row is not None:
+            try:
+                eej = json.loads(lead_row["engagement_json"] or "{}")
+            except json.JSONDecodeError:
+                eej = {}
+            src0 = str(lead_row["source"]).split(":")[0]
+            engagement_lead_metrics = f"{src0}: {_format_engagement_human(eej)}"
+        engagement_top_posts = _top_engagement_posts(items, limit=3)
 
         extra_samples: list[tuple[str, str]] = []
         seen_urls = {best_url}
@@ -226,7 +321,16 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
                 break
 
         n = max(len(items), 1)
-        recurrence_score = min(1.0, rec7 / 10.0) * 0.7 + min(1.0, rec30 / 25.0) * 0.3
+        recurrence_score = (
+            min(1.0, rec7 / 10.0) * 0.7 + min(1.0, rec30 / 25.0) * 0.3
+        )
+        llm_wtp_mean = (
+            sum(llm_wtp_vals) / len(llm_wtp_vals) if llm_wtp_vals else None
+        )
+        llm_wtp_max = max(llm_wtp_vals) if llm_wtp_vals else None
+        llm_wtp_rationale_out: str | None = (
+            llm_wtp_rationale_best if llm_wtp_rationale_best else None
+        )
         recency_score = min(1.0, recency_sum / max(n, 1))
         engagement_score = min(1.0, sum(eng_vals) / max(n, 1) / 5.0)
         cross = min(1.0, (len(sources) - 1) * 0.5 + 0.2) if len(sources) else 0.2
@@ -249,29 +353,50 @@ def compute_cluster_scores(conn: sqlite3.Connection, settings: Settings) -> list
                 cluster_id=cid,
                 recurrence_7d=rec7,
                 recurrence_30d=rec30,
+                recurrence_score=recurrence_score,
                 recency_score=recency_score,
                 engagement_score=engagement_score,
                 source_count=len(sources),
                 severity_score=severity_score,
                 wtp_score=wtp_score,
                 composite=composite,
+                composite_rank=0,
                 sample_text=best_text,
                 sample_url=best_url,
                 item_count=len(items),
                 llm_score_avg=llm_score_avg,
                 llm_category_mode=llm_category_mode,
+                llm_icp_mode=llm_icp_mode,
+                llm_wtp_mean=llm_wtp_mean,
+                llm_wtp_max=llm_wtp_max,
+                llm_wtp_rationale=llm_wtp_rationale_out,
                 source_breakdown=source_breakdown,
                 llm_one_line=llm_one_line,
                 problem_sentence=problem_sentence,
                 verbatim_lead=verbatim_lead,
+                engagement_lead_metrics=engagement_lead_metrics,
+                engagement_top_posts=engagement_top_posts,
                 extra_samples=extra_samples,
             )
         )
 
-    scored.sort(
+    by_comp = sorted(
+        scored,
         key=lambda s: (s.composite, s.recurrence_7d, s.recurrence_30d),
         reverse=True,
     )
+    for i, s in enumerate(by_comp):
+        s.composite_rank = i + 1
+
+    if primary == "engagement":
+        scored.sort(key=lambda x: (x.engagement_score, x.composite), reverse=True)
+    elif primary == "recurrence":
+        scored.sort(key=lambda x: (x.recurrence_score, x.composite), reverse=True)
+    else:
+        scored.sort(
+            key=lambda x: (x.composite, x.recurrence_7d, x.recurrence_30d),
+            reverse=True,
+        )
     return scored
 
 

@@ -331,6 +331,12 @@ def get_settings() -> Settings:
             upd["gemini_api_key"] = v
     if upd:
         s = s.model_copy(update=upd)
+
+    # Relative paths like data/ideas.sqlite3 should resolve to the project/layout root
+    # (parent of the ideas_generator package), not the process cwd — so CLI works from any directory.
+    db = s.database_path
+    if not db.is_absolute():
+        s = s.model_copy(update={"database_path": (_PACKAGE_LAYOUT_ROOT / db).resolve()})
     return s
 
 

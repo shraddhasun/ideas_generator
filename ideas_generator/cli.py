@@ -18,7 +18,6 @@ from ideas_generator.connectors.gitlab_issues import fetch_gitlab_issues
 from ideas_generator.connectors.hn import fetch_hn_items
 from ideas_generator.connectors.lemmy import fetch_lemmy_posts
 from ideas_generator.connectors.mastodon import fetch_mastodon_tag_timelines
-from ideas_generator.connectors.product_hunt import fetch_product_hunt_items
 from ideas_generator.connectors.reddit import fetch_reddit_items
 from ideas_generator.connectors.rss_feeds import fetch_rss_feeds
 from ideas_generator.connectors.stackexchange import fetch_stackexchange_items
@@ -42,10 +41,7 @@ def _connect():
 
 
 def _normalize_ingest_source(source: str) -> str:
-    s = source.strip().lower().replace("_", "-")
-    if s == "producthunt":
-        return "product-hunt"
-    return s
+    return source.strip().lower().replace("_", "-")
 
 
 def _ingest_impl(source: str) -> tuple[int, int]:
@@ -57,7 +53,6 @@ def _ingest_impl(source: str) -> tuple[int, int]:
     fetch_hn = source in ("hn", "hn-stackexchange", "all")
     fetch_se = source in ("stackexchange", "hn-stackexchange", "all")
     fetch_reddit = source in ("reddit", "all")
-    fetch_ph = source in ("product-hunt", "all")
     fetch_gh = source in ("github", "all")
     fetch_devto = source in ("devto", "all", "hn-stackexchange")
     fetch_rss = source in ("rss", "all")
@@ -97,21 +92,6 @@ def _ingest_impl(source: str) -> tuple[int, int]:
             raise typer.Exit(code=1)
         else:
             console.print("[dim]Skipping Reddit (add credentials later; use --source all to include when ready).[/dim]")
-
-    if fetch_ph:
-        tok = (settings.product_hunt_token or "").strip()
-        if tok:
-            console.print("Fetching Product Hunt…")
-            raw.extend(
-                fetch_product_hunt_items(tok, limit=settings.product_hunt_posts_limit)
-            )
-        elif source == "product-hunt":
-            console.print(
-                "[red]Product Hunt requires IDEAS_PRODUCT_HUNT_TOKEN (or PRODUCT_HUNT_TOKEN) in .env[/red]"
-            )
-            raise typer.Exit(code=1)
-        elif source == "all":
-            console.print("[dim]Skipping Product Hunt (set IDEAS_PRODUCT_HUNT_TOKEN).[/dim]")
 
     if fetch_gh:
         gh_repos = [x.strip() for x in settings.github_repos.split(",") if x.strip()]
@@ -273,7 +253,7 @@ def ingest(
         "--source",
         "-s",
         help=(
-            "hn-stackexchange (default: HN+SE+dev.to) | hn | stackexchange | reddit | product-hunt | "
+            "hn-stackexchange (default: HN+SE+dev.to) | hn | stackexchange | reddit | "
             "github | gitlab | discourse | mastodon | lemmy | devto | rss | all"
         ),
     ),
@@ -296,6 +276,11 @@ def embed() -> None:
 @app.command("llm-screen")
 def llm_screen_cmd(
     force: bool = typer.Option(False, "--force", "-f", help="Re-run LLM for all eligible rows"),
+    no_producthunt: bool = typer.Option(
+        False,
+        "--no-producthunt",
+        help="Skip Product Hunt rows during LLM screening.",
+    ),
 ) -> None:
     """OpenAI JSON classify: tool opportunity vs news / other (requires IDEAS_OPENAI_API_KEY)."""
     conn, settings = _connect()
@@ -316,7 +301,12 @@ def llm_screen_cmd(
             f"[dim]Bare key names found in those files:[/dim] {parsed_names or '(none) — check save on disk, variable name, non-empty value)'}"
         )
         raise typer.Exit(code=1)
-    n = run_llm_screen(conn, settings, force=force)
+    n = run_llm_screen(
+        conn,
+        settings,
+        force=force,
+        exclude_producthunt=no_producthunt,
+    )
     conn.close()
     console.print(f"[green]LLM screening updated {n} rows.[/green]")
 
@@ -351,6 +341,11 @@ def report_cmd(
     top: int = typer.Option(25, "--top", "-n"),
     fmt: str = typer.Option("md", "--format", "-f", help="md | csv"),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
+    sort_primary: str = typer.Option(
+        "composite",
+        "--sort",
+        help="Primary ordering: composite | engagement | recurrence",
+    ),
     compact: bool = typer.Option(
         False,
         "--compact",
@@ -362,30 +357,57 @@ def report_cmd(
         "--detail-limit",
         help="Markdown: max clusters in the detail section (ignored with --compact).",
     ),
+    engagement_highlights: int = typer.Option(
+        10,
+        "--engagement-highlights",
+        help="Markdown: how many themes in the 'Strongest audience engagement' section.",
+    ),
 ) -> None:
     """Print ranked themes."""
     conn, settings = _connect()
     dbm.init_db(conn)
-    scored = compute_cluster_scores(conn, settings)
+    scored = compute_cluster_scores(conn, settings, sort_primary=sort_primary)
     conn.close()
 
     if not scored:
-        console.print("[yellow]No clusters yet — run ingest, embed, cluster first.[/yellow]")
+        console.print(
+            "[yellow]No clusters yet — run ingest, embed, cluster first.[/yellow]\n"
+            f"[dim]Using database:[/dim] [dim]{settings.database_path}[/dim]"
+        )
         raise typer.Exit(0)
 
+    n_rows = min(top, len(scored))
+    sort_note = (sort_primary or "composite").strip().lower()
+    if sort_note not in ("composite", "engagement", "recurrence"):
+        sort_note = "composite"
     if fmt == "csv":
         sio = io.StringIO()
         report_csv(scored, top, sio)
         data = sio.getvalue()
         if output:
-            output.write_text(data, encoding="utf-8")
+            path = output.expanduser().resolve()
+            path.write_text(data, encoding="utf-8")
+            console.print(
+                f"[green]Wrote CSV[/green] ({n_rows} rows, {len(scored)} clusters, sort={sort_note}) → {path}"
+            )
         else:
             sys.stdout.write(data)
         return
 
-    md = report_markdown(scored, top, compact=compact, detail_limit=detail_limit)
+    md = report_markdown(
+        scored,
+        top,
+        compact=compact,
+        detail_limit=detail_limit,
+        engagement_highlight_n=engagement_highlights,
+        sort_primary=sort_note,
+    )
     if output:
-        output.write_text(md, encoding="utf-8")
+        path = output.expanduser().resolve()
+        path.write_text(md, encoding="utf-8")
+        console.print(
+            f"[green]Wrote Markdown report[/green] ({n_rows} rows, {len(scored)} clusters, sort={sort_note}) → {path}"
+        )
     else:
         sys.stdout.write(md)
 
@@ -442,8 +464,9 @@ def run(
 
     md = report_markdown(scored, top)
     if output is not None:
-        output.write_text(md, encoding="utf-8")
-        console.print(f"[green]Wrote report to {output}[/green]")
+        path = output.expanduser().resolve()
+        path.write_text(md, encoding="utf-8")
+        console.print(f"[green]Wrote report to[/green] {path}")
     else:
         sys.stdout.write(md)
 
