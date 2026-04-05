@@ -1,6 +1,6 @@
 # Ideas generator
 
-Ingests **Hacker News**, **Stack Exchange**, and **dev.to** on the default `ideas ingest`, filters out healthcare-related content, **scores each post for “business tool opportunity”** (embedding similarity to a fixed anchor describing B2B / ops problems solvable with software), then clusters and ranks only posts above **`IDEAS_MIN_BUSINESS_TOOL_FIT`**. **RSS** (default includes **Lobsters**), **GitLab** issues, **Discourse** topics, **Mastodon** hashtags, and **Lemmy** posts use **public APIs** (no key by default). **Reddit**, **Product Hunt**, and optional tokens for **GitHub / dev.to / GitLab** improve limits or private access (see below).
+Ingests **Hacker News**, **Stack Exchange**, and **dev.to** on the default `ideas ingest`, filters out healthcare-related content, **scores each post for “business tool opportunity”** (embedding similarity to a fixed anchor describing B2B / ops problems solvable with software), then clusters and ranks only posts above **`IDEAS_MIN_BUSINESS_TOOL_FIT`**. **RSS** (default includes **Lobsters**), **GitLab** issues, **Discourse** topics, **Mastodon** hashtags, and **Lemmy** posts use **public APIs** (no key by default). **Reddit** and optional tokens for **GitHub / dev.to / GitLab** improve limits or private access (see below).
 
 ## Setup
 
@@ -25,6 +25,12 @@ ideas score
 ideas report --top 25
 ```
 
+Optional **devtools / PM–design–engineering** lens (last 90 days; writes `devtools_report.md`, gitignored like `report.md`):
+
+```bash
+python3 -m ideas_generator.devtools_report
+```
+
 Other sources:
 
 ```bash
@@ -32,7 +38,6 @@ ideas ingest -s hn              # Hacker News only
 ideas ingest -s stackexchange   # Stack Exchange only
 ideas ingest -s all               # Everything below when configured (+ RSS Lobsters by default)
 ideas ingest -s reddit            # Reddit only (requires credentials)
-ideas ingest -s product-hunt    # Product Hunt only (requires IDEAS_PRODUCT_HUNT_TOKEN)
 ideas ingest -s github          # GitHub issues only (requires IDEAS_GITHUB_REPOS)
 ideas ingest -s devto           # dev.to recent articles only (no API key)
 ideas ingest -s rss             # RSS feeds only (uses IDEAS_RSS_FEED_URLS; default is Lobsters)
@@ -42,7 +47,7 @@ ideas ingest -s mastodon        # Mastodon hashtag timelines (host + hashtags)
 ideas ingest -s lemmy           # Lemmy post list (set IDEAS_LEMMY_HOST)
 ```
 
-Default **`ideas ingest`** includes HN, SE, and dev.to. **`ideas ingest -s all`** adds optional Reddit, Product Hunt, GitHub, **RSS** (defaults to **`https://lobste.rs/h.rss`** unless you override **`IDEAS_RSS_FEED_URLS`**), GitLab, Discourse, Mastodon, and Lemmy when the corresponding env vars are set.
+Default **`ideas ingest`** includes HN, SE, and dev.to. **`ideas ingest -s all`** adds optional Reddit, GitHub, **RSS** (defaults to **`https://lobste.rs/h.rss`** unless you override **`IDEAS_RSS_FEED_URLS`**), GitLab, Discourse, Mastodon, and Lemmy when the corresponding env vars are set.
 
 Or one shot:
 
@@ -134,10 +139,6 @@ Use **`ideas llm-screen --force`** to re-classify all eligible rows.
 
 **`IDEAS_LEMMY_HOST`** (e.g. `lemmy.ml`). Optional **`IDEAS_LEMMY_COMMUNITY`** (e.g. `asklemmy`). **`IDEAS_LEMMY_LIMIT`**.
 
-### Product Hunt (optional)
-
-Register a developer token via the [Product Hunt API docs](https://api.producthunt.com/v2/docs), set **`IDEAS_PRODUCT_HUNT_TOKEN`** (or **`PRODUCT_HUNT_TOKEN`**), then use **`ideas ingest -s all`** or **`-s product-hunt`**. **`IDEAS_PRODUCT_HUNT_POSTS_LIMIT`** caps ranked launches (default 50).
-
 ### GitHub (optional)
 
 Set **`IDEAS_GITHUB_REPOS`** to comma-separated **`owner/repo`** pairs. Fetches **recent open issues** (not pull requests). **`IDEAS_GITHUB_TOKEN`** (or **`GITHUB_TOKEN`**) is optional for public repos but improves rate limits. Tune **`IDEAS_GITHUB_ISSUES_PER_REPO`** (default 25).
@@ -154,4 +155,4 @@ pytest
 
 ## Legal
 
-Use official APIs; respect rate limits and each platform’s terms. Reddit OAuth, Product Hunt tokens, and GitHub API access are subject to each provider’s policies.
+Use official APIs; respect rate limits and each platform’s terms. Reddit OAuth and GitHub API access are subject to each provider’s policies.

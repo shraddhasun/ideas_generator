@@ -45,9 +45,6 @@ class Settings(BaseSettings):
         description="Deprecated: if set, overrides IDEAS_INGEST_LOOKBACK_SECONDS (same window for HN and post-filter).",
     )
 
-    product_hunt_token: str | None = None
-    product_hunt_posts_limit: int = Field(default=50, ge=1, le=100)
-
     github_token: str | None = None
     github_repos: str = Field(
         default="",
@@ -179,11 +176,6 @@ class Settings(BaseSettings):
             v = os.environ.get("GITHUB_TOKEN") or os.environ.get("IDEAS_GITHUB_TOKEN")
             if v and str(v).strip():
                 data["github_token"] = str(v).strip()
-        ph = data.get("product_hunt_token")
-        if ph is None or (isinstance(ph, str) and not ph.strip()):
-            v = os.environ.get("PRODUCT_HUNT_TOKEN") or os.environ.get("IDEAS_PRODUCT_HUNT_TOKEN")
-            if v and str(v).strip():
-                data["product_hunt_token"] = str(v).strip()
         dt = data.get("devto_token")
         if dt is None or (isinstance(dt, str) and not dt.strip()):
             v = os.environ.get("DEVTO_API_KEY") or os.environ.get("IDEAS_DEVTO_TOKEN")
